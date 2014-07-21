@@ -106,6 +106,56 @@
 ;------------------------------------------------------------------------------------
 ; PHYSICS
 
+(defun physics (ent)
+  ;(setf (x dot) (+ (x dot) (* (x_v dot) (sdl:dt))))
+  ;(setf (y dot) (+ (y dot) (* (y_v dot) (sdl:dt)))))
+  (if (OR (AND (< (x_v ent) 50) 
+	       (> (x_v ent) 0))
+	  (AND (> (x_v ent) 50) 
+	       (< (x_v ent) 0)))
+      (setf (x_v ent) 
+	    (+ (x_v ent) 
+	       (* (elt (a ent) 0) 
+		  (sdl:dt))))
+      (setf (elt (a ent) 0) 
+	    0))
+  (setf (y_v ent) 
+	(+ (y_v ent) 
+	   (* (elt (a ent) 1) 
+	      (sdl:dt))))
+  (setf (x ent) 
+	(+ (x ent) 
+	   (* (x_v ent) 
+	      (sdl:dt)) 
+	   (* 1/2 
+	      (elt (a ent) 0) 
+	      (expt (sdl:dt) 
+		    2))))
+  (setf (y ent) 
+	(+ (y ent) 
+	   (* (y_v ent) 
+	      (sdl:dt))
+	   (* 1/2 
+	      (elt (a ent) 1) 
+	      (expt (sdl:dt) 
+		    2))))
+  ;(addVector (* 0.001 (x_v ent)) (* 0.001 (y_v ent)))
+
+      (unless (OR (keyDown :sdl-key-j)
+		  (keyDown :sdl-key-l))
+	(if (> (abs (x_v ent)) 0.1)
+	    (setf (x_v ent) (* 0.75 (x_v ent)))
+	    (setf (x_v ent) 0)))
+
+      (unless (OR (keyDown :sdl-key-k)
+		  (keyDown :sdl-key-i))
+	(if (> (abs (y_v ent)) 0.1)
+	    (setf (y_v ent) (* 0.75 (y_v ent)))
+	    (setf (y_v ent) 0)))
+  
+  (setf (elt (pos ent) 0) (x ent))
+  (setf (elt (pos ent) 1) (y ent))
+)
 
 (defun keyDown (key)
   (if (sdl:key-down-p key)
@@ -1471,45 +1521,132 @@
 ;	       (eq (count 'D VEKTORI) (abs y-diff))))
  ;     (print "CORRECT!")
   ;    (print "wrong ,,|,")))
-			    ;   ^^^ LOL
   (loop for i from 0 to (- (length VEKTORI) 1)
        do (vector-push (elt (reverse VEKTORI) i) VEKTORI3))
   VEKTORI)
 
+
 ;------------------------------------------------------------------------------------
-; EDITOR'S OBJECT SELECTION MENU
+; BATTLE SCREEN
 
-(defun draw-object-list ()
-  (loop for i from 0 to ))
+(defvar turn 'player)
 
-(defun generate-cell-grid (&key cell-container rows columns cell-width cell-height spacing x-offset y-offset)
-    (loop for j from 0 to (1- columns) 
-      do (loop for i from 0 to (1- rows)
-	   do (vector-push (make-cell 
-			    :pos `(,(+ (* i (+ cell-width spacing)) x-offset) ,(+ (* j (+ cell-height spacing)) y-offset))
-			    :hitbox `(0 ,cell-width 0 ,cell-height)
-			    :value (fill-pointer cell-container)
-			    :checkbox 0)
-			   cell-container))))
-
-(defun draw-cell-grid (cell-container)
-  (loop for i from 0 to (1- (length cell-container))
-    do (sdl:draw-box-* x y width height :color color
-
-
-(defun editor-object-select-menu ()
+(defun battle ()
+  (fv)
+  (generateBattleMapArray)
+  (defvar tempPos (pos *avatar*))
+  (defvar tempPos2 (pos *enemy*))
+  (defvar moved 0)
+  (setf moved 0)
+  (setf (pos *avatar*) #(0 0))
+  (setf (pos *enemy*) #(0 7))
+  (setf battle 0)
   (sdl:with-events (:poll)
     (:quit-event () t)
-    (:mouse-motion-event (:x mouse-x :y mouse-y))
+    (:key-down-event (:key key)
+		     (format t "Key down: ~S~%" key)
+		     (case key
+		       (:sdl-key-k (progn (move2 *avatar* 1)
+					  (setf turn 'AI)
+					  (setf moved 1)))
+		       (:sdl-key-j (progn (move2 *avatar* 2)
+					  (setf turn 'AI)
+					  (setf moved 1)))
+		       (:sdl-key-h (progn (move2 *avatar* 3)
+					  (setf turn 'AI)
+					  (setf moved 1)))
+		       (:sdl-key-l (progn (move2 *avatar* 4)
+					  (setf turn 'AI)
+					  (setf moved 1)))
+		       (:sdl-key-space (if (> (length vektori3) 0)
+					   (move2 *enemy* (case (vector-pop VEKTORI3)
+							    (U 1)
+							    (D 2)
+							    (L 3)
+							    (R 4))))))
+		     (case key
+		       (:sdl-key-s (stats)))
+		     (case key
+		       (:sdl-key-q (sdl:push-quit-event)))) 
+		     
     (:idle ()
 	   (sdl:clear-display sdl:*black*)
-	   
-	   (sdl:update-display))))
+	   (drawBattleBoard)
+	   (sdl:draw-string-solid-* (format NIL "turn: ~S" turn) 0 0)
+	   (sdl:draw-string-solid-* (format NIL "pos_player: ~S ~S" (elt (pos *avatar*) 0)
+					                            (elt (pos *avatar*) 1)) 0 40)
+	   (sdl:draw-string-solid-* (format NIL "pos_enemy: ~S ~S" (elt (pos *enemy*) 0)
+					                        (elt (pos *enemy*) 1)) 0 80)
+	   (if (string-equal turn 'AI)
+	       (sdl:draw-string-solid-* (format NIL "<press SPACE>") 500 40))
+	   (sdl:draw-string-solid-* (format NIL "turn: ~S" turn) 0 0)
+	   ;(sdl:draw-string-solid-* (format NIL "vektori: ~S" (elt vektori 0)) 0 120)
+	   (if (eq moved 1)
+	       (progn (fv)
+		      (path *avatar* *enemy*)
+		      (setf moved 0)))
+	   ;(fv)
+	   (drawPlayer2)
+	   (drawEnemies2)
+	   ;(path *avatar* *enemy*)
+	   (if (AND (> (elt (pos *avatar*) 0) 0)
+		    (> (elt (pos *avatar*) 1) 0)) 
+	       (drawPath))
+	   ;(drawArrow #(5 5) 4)
+	   ;(drawArrow #(6 5) 1)
+	   ;(drawArrow #(6 4) 4)
+	   ;(drawArrow #(5 5) 4)
+	   ;(drawPath)
+	   (sdl:update-display)
+	   )
+)
+  (setf (pos *avatar*) tempPos)
+  (setf (pos *enemy*) tempPos2)
+)
 
-;------------------------------------------------------------------------------------
-; 
 
 
+
+
+;		  (if (AND (string-equal turn 'AI) (< (elt (pos *enemy*) 1) 12))
+;	       (progn (move2 *enemy* 2)
+;		      (sdl:with-events (:poll)
+;			(:quit-event () T)
+;			(:key-down-event (:key key)
+;					 (format T "Key down: ~S~%" key)
+;					 (case key
+;					   (:sdl-key-space (sdl:push-quit-event))))
+;			(:idle ()
+;			       (AI)
+;			       (setf turn 'AI)
+;			;(sleep 1)
+;		      ))))
+
+
+
+(defparameter CTC 0)
+    
+(defun drawBattleBoard ()
+  (loop for j from 0 to 7
+    do (loop for i from 0 to 7
+      do (progn (sdl:draw-surface-at-* *grassScarce* 
+				(+ (* 6 48) (* 48 i))     ; x
+				(+ (* 4 48) (* 48 j))))))
+  (loop for i from 0 to 8
+      do (sdl:draw-line-* (+ (* 6 48) (* i 48)) (+ (* 4 48) (* 0 48))
+			  (+ (* 6 48) (* i 48)) (+ (* 4 48) (* 8 48))
+			  :color sdl:*blue*))
+  (loop for j from 0 to 8
+     do (sdl:draw-line-* (+ (* 6 48) (* 0 48)) (+ (* 4 48) (* j 48))
+			 (+ (* 6 48) (* 8 48)) (+ (* 4 48) (* j 48))
+			 :color sdl:*blue*))) ; y
+
+(defparameter battleMap (make-array '(8 8)))
+(defun generateBattleMapArray ()
+  (loop for j from 0 to 7
+    do (loop for i from 0 to 7
+	  do (setf (aref battleMap i j) (vector (+ (* 6 48) (* 48 i))
+						(+ (* 4 48) (* 48 j)))))))
 (defparameter mousex NIL)
 (defparameter mousey NIL)
 (defparameter mouse #(0 0))
@@ -1520,14 +1657,16 @@
 						   (merge-pathnames "gfx/"
 								    *game-root-dir*))
 						 :alpha ,alpha)))
+;------------------------------------------------------------------------------------
 (defparameter radial 0)
 (defparameter radialMenu 0)
-
-;------------------------------------------------------------------------------------
-; MAIN LOOP
-
 (defun test2 ()
+;  (addObject laatikko1)
+;  (addObject laatikko2)
+ ; (addObject laatikko3)
+;  (addObject laatikko4)
   (create-screen-index-cells)
+  ;(run2)
   (sdl:with-init ()
     (sdl:window 960 720 :title-caption "rogue")
     (setf ELAPSED 0) 
@@ -1537,9 +1676,6 @@
     (setf cl-opengl-bindings:*gl-get-proc-address* #'sdl-cffi::sdl-gl-get-proc-address)
 
     (load (merge-pathnames "gfx.lisp" *game-root-dir*))
-    (load (merge-pathnames "physics.lisp" *game-root-dir*))
-    (load (merge-pathnames "battle.lisp" *game-root-dir*))
-    
     (createCells)
     (tick-checkboxes)
 
