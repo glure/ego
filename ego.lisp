@@ -1,25 +1,23 @@
+(defparameter objects (make-array 128 :adjustable t :fill-pointer 0)
+  "All objects in current screen.")
 
 (defparameter *editor-area* 1)
 (defparameter *editor-screen* 50)
-(defparameter *game-root-dir* "E:/coding/")
+(defparameter *game-root-dir* "E:/coding/ego/")
+
 
 (defparameter *x* 60)
 (defparameter *y* 420)
 
 (defparameter *default-font-path* "/usr/share/fonts")
 (defparameter *windows-font-path* "C:/Users/glure/quicklisp/dists/quicklisp/software/lispbuilder-20140113-svn/lispbuilder-sdl/assets/")
-(make-instance 'SDL:ttf-font-definition
-               :size 32
-               :filename (merge-pathnames "Vera.ttf" *windows-font-path*))
-
-
-(defparameter *linux-font-path* "")
+(defparameter *linux-font-path* "/home/migrayn/quicklisp/dists/quicklisp/software/lispbuilder-20130312-svn/lispbuilder-sdl/assets/")
 
 (defparameter *vera-ttf* (make-instance 'SDL:ttf-font-definition
                           :size 32
 			  :filename (merge-pathnames "Vera.ttf" *windows-font-path*)))
 
-(unless (SDL:INITIALIsE-default-FONT *vera-ttf*)
+(unless (sdl:initialise-default-font *vera-ttf*)
    (error "Cannot create font."))
 
 
@@ -194,17 +192,18 @@
 
 
 (defun modify2 ()
+  "Add/remove an object to/from the objects vector."
   (let ((hit 0))
     (if (> (length objects) 0)
 	(loop for i from 0 to (1- (length objects))
 	   do (if (cursor-inside-hitbox (elt objects i))
 		  (progn (format t "~S" (object-name (eval (elt objects i))))
 			 (setf (object-dead (elt objects i)) 1)
-			 (setf hit 1))
-		  ))
-	(place-object))
+			 (setf hit 1))))
+	(progn (place-object2)
+	       (setf hit 1)))
     (if (eq hit 0)
-	(place-object))))
+	(place-object2))))
 
 (defun modify3 ()
   (mapcar (lambda (x) (if (insideHitbox (eval (elt objects n)))
@@ -249,7 +248,7 @@
    :use (elt list 7)
    :dead (elt list 8)))
 
-(defun createObjectList ()
+(defun create-object-list ()
   "Return object list to be written into file (map objects)."
   (if (NOT (eq (length objects) 0))
       (let ((list NIL))
@@ -262,7 +261,7 @@
 (defun write-objects ()
   "Write objects into file as a list."
   (let ((file (open (map-file *editor-area* *editor-screen*) :direction :output :if-exists :supersede)))
-    (print (createObjectList) file)
+    (print (create-object-list) file)
     (close file)))
 
 
@@ -279,7 +278,7 @@
 	  (loop for i from 0 to (1- (length objectsList))
 	     do (vector-push (list->struct (elt objectsList i)) objects))
 	  (close file)))
-      (progn (setf objects (make-array 5 :adjustable t :fill-pointer 0))
+      (progn (setf objects (make-array 128 :adjustable t :fill-pointer 0))
 	     ())))
 
 (defun recurse (list)
@@ -388,7 +387,7 @@
   contents ; item list '(a b c d)
   pos      ; #(x y)
   hitbox
-  gfx      ; (sdl:load-image "gfx.png")
+  gfx      ; (sdl:load-image "gfx.png") <- no
   tags     ; e.g. '(container locked)
   use
   dead)     
@@ -425,11 +424,7 @@
    :gfx '*laserpointer*
    :tags '()))
 
-(defparameter objects 
-  (make-array 5 
-	      :adjustable t 
-	      :fill-pointer 0)
-  "All objects in current screen.")
+
 
 (defparameter laatikko
   (make-object
@@ -454,13 +449,13 @@
 			     (:sdl-key-q (sdl:push-quit-event))))
 	  (:idle ()
 		 (sdl:clear-display sdl:*black*)
-		 (drawInventory foreignInventory #(600 200))
-		 (drawInventory (inventory *avatar*) #(200 200))
+		 (draw-inventory foreignInventory #(600 200))
+		 (draw-inventory (inventory *avatar*) #(200 200))
 		 ;(sdl:draw-string-solid-* (format nil "kyl: ~D" (elt foreignInventory 0) 20 20))
 		 
 		 (sdl:update-display)))))
 
-(defun drawInventory (itemList pos)
+(defun draw-inventory (itemList pos)
   (defparameter item NIL)
   (let ((x (elt pos 0))
 	(y (elt pos 1)))
@@ -475,11 +470,12 @@
 (defun addObject (objectName)
   (vector-push (slot-value objectName 'name)  objects))
 
-(defun drawEntities ()
-  (loop for n from 0 to (- (length objects) 1)
-       do (sdl:draw-surface-at-* (eval (object-gfx (eval (elt objects n))))
+(defun draw-objects ()
+  (loop for n from 0 to (1- (length objects))
+       do (sdl:draw-surface-at-* (eval (elt (object-gfx (elt objects n)) 0))
 			       (- (elt (object-pos (elt objects n)) 0) 24)
-			       (- (elt (object-pos (elt objects n)) 1) 24))))
+			       (- (elt (object-pos (elt objects n)) 1) 24)
+			       :cell (elt (object-gfx (eval (elt objects n))) 1))))
 
     
 ;------------------------------------------------------------------------------------
@@ -595,35 +591,6 @@
         )
 )
 
-(defun drawMapArray ()
-  (loop for j from 0 to 14
-     do (loop for i from 0 to 19
-	   do (if (aref mapArray i j)
-		  (sdl:draw-surface-at-* *wall* (* 48 i) (* 48 j)
-					 :cell (2b->10b (drawmaparraytile i j)))))))
-
-
-(defun drawMapArrayTile (x y)
-  (let ((checkByte #*0000))
-    (if (AND (> y 0)
-             (string-equal (aref mapArray x (1- y)) 'river))
-        (setf checkByte (bit-ior #*1000 checkByte)))
-    (if (AND (< y 14)
-             (string-equal (aref mapArray x (1+ y)) 'river))
-        (setf checkByte (bit-ior #*0100 checkByte)))
-    (if (AND (> x 0)
-             (string-equal (aref mapArray (1- x) y) 'river))
-        (setf checkByte (bit-ior #*0010 checkByte)))
-    (if (AND (< x 19)
-             (string-equal (aref mapArray (1+ x) y) 'river));
-        (setf checkByte (bit-ior #*0001 checkByte)))
-    checkByte))
-
-(defun 2b->10b (vect)
-  (reduce (let ((e 1)) (lambda (accum bit)
-                        (prog1 (+ accum (* e bit))
-                               (setf e (* e 2)))))
-          (reverse vect) :initial-value 0))
 
 
 ;; Create the cells.
@@ -632,8 +599,7 @@
   (defparameter *cells* (loop for y from 0 to 144 by 48
 			   append (loop for x from 0 to 144 by 48
 				     collect (list x y 48 48))))
-  (setf (sdl:cells *wall*) *cells*)
-  )
+  (setf (sdl:cells *river*) *cells*))
 
 (defun drawCells ()
 ;; Assign the cells to the sprite-sheet
@@ -1480,30 +1446,354 @@
 ; EDITOR'S OBJECT SELECTION MENU
 
 (defun draw-object-list ()
-  (loop for i from 0 to ))
+  (loop for i from 0 to 0
+       do ()))
+
+
+(defparameter object-menu-filter-buttons (make-array 10 :adjustable t :fill-pointer 0))
+(defparameter *brush* nil)
+(defparameter *templates* nil)
 
 (defun generate-cell-grid (&key cell-container rows columns cell-width cell-height spacing x-offset y-offset)
-    (loop for j from 0 to (1- columns) 
-      do (loop for i from 0 to (1- rows)
-	   do (vector-push (make-cell 
-			    :pos `(,(+ (* i (+ cell-width spacing)) x-offset) ,(+ (* j (+ cell-height spacing)) y-offset))
+  (setf (fill-pointer cell-container) 0)  
+  (loop for j from 0 to (1- rows) 
+      do (loop for i from 0 to (1- columns)
+	   do (vector-push (make-cell          ; CHECK FOR SYNC WITH VISUAL 
+			    :pos `(,(+ (* i (+ (1- cell-width) spacing)) x-offset) 
+				   ,(+ (* j (+ (1- cell-height) spacing)) y-offset))
 			    :hitbox `(0 ,cell-width 0 ,cell-height)
-			    :value (fill-pointer cell-container)
+			    :value nil
 			    :checkbox 0)
-			   cell-container))))
+			   cell-container)))
+    (vector-push `(,cell-width ,cell-height)
+		 cell-container))
 
-(defun draw-cell-grid (cell-container)
-  (loop for i from 0 to (1- (length cell-container))
-    do (sdl:draw-box-* x y width height :color color
+(defun draw-cell-grid (cell-container &key r g b)
+  (loop for i from 0 to (- (length cell-container) 2)
+    do (sdl:draw-box-* (elt (cell-pos (elt cell-container i)) 0)
+		       (elt (cell-pos (elt cell-container i)) 1)
+		       (1- (elt (elt cell-container (1- (length cell-container))) 0))
+		       (1- (elt (elt cell-container (1- (length cell-container))) 1))
+		       :color (sdl:color :r r :g g :b b))))
 
+(defun load-objects-from-file ()
+  "Load object templates from a file and assign the contents to variable *templates*."
+  (let ((file (open (merge-pathnames "object-templates.lisp" *game-root-dir*))))
+    (let ((templates (read file)))
+      ;(setf (fill-pointer object-menu-cells) 0)
+      ;(loop for i from 0 to (- (length templates) 1)
+      ;do (setf (cell-value (elt object-menu-cells i))
+      ;	 (elt templates i))))
+      (setf *templates* templates))
+    (close file)))
+
+(defun load-objects-from-file2 ()
+  (let ((file (open (merge-pathnames "object-templates.lisp" *game-root-dir*))))
+    (setf *templates* (read file))
+    (close file)))
+
+(defun load-objects-into-cells ()
+  "Load object templates from *templates* into value-properties of object-menu-cells."
+  ;(defparameter object-menu-cells (make-array 101 :adjustable t :fill-pointer 0)) 
+  ;(setf (fill-pointer object-menu-cells) 0)
+  (let ((temp-templates-vector (make-array 100 :adjustable t :fill-pointer 0)))
+    (loop for i from 0 to (1- (length *templates*))
+       do (if (in-tags i)
+	      (vector-push (elt *templates* i)
+			   temp-templates-vector)))
+    (loop for i from 0 to (1- (length temp-templates-vector))
+      do (setf (cell-value (elt object-menu-cells i))
+	       (elt temp-templates-vector i)))))
+
+(defun draw-selected-brush-indicator ()
+  (if *brush*
+      (loop for i from 0 to (- (length object-menu-cells) 2)
+	 do (if (eq *brush* (cell-value (elt object-menu-cells i)))
+		(sdl:draw-surface-at-* *objectreticle*
+				       (- (elt (cell-pos (elt object-menu-cells i)) 0) 3)
+				       (- (elt (cell-pos (elt object-menu-cells i)) 1) 3))))))
+(defun in-tags (object-index)
+  (let ((test-clause nil))
+    (loop for i from 0 to (1- (length *filter-tags*))
+       do (if (member (elt *filter-tags* i) (elt (elt *templates* object-index) 3))
+	      (setf test-clause t)))
+    test-clause))
+
+(defun draw-objects-onto-cells ()
+  (loop for i from 0 to (- (length object-menu-cells) 2)
+    do (if (cell-value (elt object-menu-cells i))
+	   (sdl:draw-surface-at-* (eval (elt (elt (cell-value (elt object-menu-cells i)) 2) 0))
+				  (elt (cell-pos (elt object-menu-cells i)) 0)
+				  (elt (cell-pos (elt object-menu-cells i)) 1)))))
+
+(defun draw-cursor ()
+  (sdl:draw-surface-at-* *cursor* (- (sdl:mouse-x) 17) 
+			          (- (sdl:mouse-y) 17)))
+(defun brush-tags ()
+  (elt *brush* 3))
+
+(defparameter *snap-to-grid* 0)
+
+(defun draw-brush ()
+  (if *brush*
+      (let ((brush-x nil)
+	    (brush-y nil))
+	(if (eq *snap-to-grid* 1)
+	    (progn (setf brush-x (+ (* 48 (truncate (sdl:mouse-x) 48)) 0))
+		   (setf brush-y (+ (* 48 (truncate (sdl:mouse-y) 48)) 0)))
+	    (progn (setf brush-x (- (sdl:mouse-x) 24))
+		   (setf brush-y (- (sdl:mouse-y) 24))))
+
+	(sdl:draw-surface-at-* (eval (elt (elt *brush* 2) 0))
+			       brush-x
+			       brush-y))))
+
+(defun select-brush ()
+  (loop for i from 0 to (- (length object-menu-cells) 2)
+    do (if (cursor-inside-hitbox (elt object-menu-cells i))
+	   (setf *brush* (cell-value (elt object-menu-cells i))))))
+
+(defun select-filter-tags ()
+  (loop for i from 0 to (- (length object-menu-filter-buttons) 2)
+    do (if (cursor-inside-hitbox (elt object-menu-filter-buttons i))
+	   (if (member (cell-value (elt object-menu-filter-buttons i)) *filter-tags*)
+	       (setf *filter-tags* (remove (cell-value (elt object-menu-filter-buttons i)) *filter-tags*))
+	       (setf *filter-tags* (append *filter-tags* (list (cell-value (elt object-menu-filter-buttons i)))))))))
+
+
+
+(defun draw-hitboxes ()
+  (loop for i from 0 to (1- (length objects))
+    do (sdl:draw-box-* (- (elt (object-pos (elt objects i)) 0)
+			  (elt (object-hitbox (elt objects i)) 0))
+		       (- (elt (object-pos (elt objects i)) 1)
+			  (elt (object-hitbox (elt objects i)) 2))
+		       (+ (elt (object-hitbox (elt objects i)) 0)
+			  (elt (object-hitbox (elt objects i)) 1))
+		       (+ (elt (object-hitbox (elt objects i)) 2)
+			  (elt (object-hitbox (elt objects i)) 3))
+		       :color (sdl:color :r 0 :g 155 :b 100))))
+		       
+
+(defun place-object2 ()
+  (if *brush*
+      (vector-push (make-object
+		    :name (elt *brush* 0)
+		    :id nil
+		    :contents '()
+		    :pos (if (eq *snap-to-grid* 1)
+			     `(,(+ (* 48 (truncate (sdl:mouse-x) 48)) 24)
+			       ,(+ (* 48 (truncate (sdl:mouse-y) 48)) 24))
+			     `(,(sdl:mouse-x) ,(sdl:mouse-y)))
+		    :hitbox (elt *brush* 1)
+		    :gfx (elt *brush* 2)
+		    :tags (elt *brush* 3)
+		    :use (elt *brush* 4)
+		    :dead 0) 
+		   objects)))
+
+(defparameter *display-hitboxes* 0)
+(defparameter *display-grid* 0)
+(defparameter *filter-tags* (list nil))
+
+(defun toggle-hitboxes ()
+  (if (eq *display-hitboxes* 0)
+      (setf *display-hitboxes* 1)
+      (setf *display-hitboxes* 0)))
+(defun toggle-grid()
+  (if (eq *display-grid* 0)
+      (setf *display-grid* 1)
+      (setf *display-grid* 0)))
+(defun toggle-snap ()
+  (if (eq *snap-to-grid* 0)
+      (setf *snap-to-grid* 1)
+      (setf *snap-to-grid* 0)))
+
+(defun draw-tile-grid ()
+  (loop for i from 0 to 19
+    do (loop for j from 0 to 14
+	 do (sdl:draw-line-* (* i 48) (* j 48)
+			     (* i 48) (* j 48)
+			     :color (sdl:color :r 200 :g 200 :b 255)))))
+
+(defun draw-filter-button-texts ()
+  (let ((color-off (sdl:color :r 115 :g 50 :b 50))
+	(color-on (sdl:color :r 100 :g 255 :b 0)))
+  (sdl:draw-string-solid-* (format nil "terrain") 
+			   (elt (cell-pos (elt object-menu-filter-buttons 0)) 0)
+			   (elt (cell-pos (elt object-menu-filter-buttons 0)) 1)
+			   :color (if (member 'terrain *filter-tags*)
+				      color-on
+				      color-off))
+  (sdl:draw-string-solid-* (format nil "containers") 
+			   (elt (cell-pos (elt object-menu-filter-buttons 1)) 0)
+			   (elt (cell-pos (elt object-menu-filter-buttons 1)) 1)
+			   :color (if (member 'container *filter-tags*)
+				      color-on
+				      color-off))))
+(defun set-filter-button-tags ()
+  (setf (cell-value (elt object-menu-filter-buttons 0)) 'terrain)
+  (setf (cell-value (elt object-menu-filter-buttons 1)) 'container))
 
 (defun editor-object-select-menu ()
-  (sdl:with-events (:poll)
+  (defparameter object-menu-cells (make-array 101 :adjustable t :fill-pointer 0))
+
+
+; bullshit 
+(defun drawMapArray ()
+  (loop for j from 0 to 14
+     do (loop for i from 0 to 19
+	   do (if (aref mapArray i j)
+		  (sdl:draw-surface-at-* *wall* (* 48 i) (* 48 j)
+					 :cell (2b->10b (drawmaparraytile i j)))))))
+(defun adjacency (x y)
+  
+  (loop for i from 0 to (1- (length objects))
+     do (let ((checkbyte #*0000))
+	  (loop for j from 0 to (1- (length objects))
+	     do 
+	       (progn (if (AND (eq 'river ; if the object is river...
+				   (object-name (elt objects j)))
+			       (eq (- y 48)
+				   (elt (object-pos (elt objects j)) 1)))
+			  (setf checkbyte (bit-ior #*1000 checkbyte)))
+		      (if (AND (eq 'river ; if the object is river...
+				   (object-name (elt objects j)))
+			       (eq (+ y 48)
+				   (elt (object-pos (elt objects j)) 1)))
+			  (setf checkbyte (bit-ior #*0100 checkbyte))) 
+		      (if (AND (eq 'river ; if the object is river...
+				   (object-name (elt objects j)))
+			       (eq (- x 48)
+				   (elt (object-pos (elt objects j)) 0)))
+			  (setf checkbyte (bit-ior #*0010 checkbyte)))
+		      (if (AND (eq 'river ; if the object is river...
+				   (object-name (elt objects j)))
+			       (eq (+ x 48)
+				   (elt (object-pos (elt objects j)) 0)))
+			  (setf checkbyte (bit-ior #*0001 checkbyte)))
+		      (setf (elt (object-gfx (elt objects i)) 1)
+			    (2b->10b checkbyte)))))))
+
+(defun set-gfx-cell (obj)
+  (setf (elt (object-gfx obj) 1)
+	(2b->10b (get-checkbyte obj))))
+    
+
+(defun get-checkbyte (obj)
+  (let ((x (elt (object-pos obj) 0))
+	(y (elt (object-pos obj) 1))
+	(checkbyte #*0000))
+    (loop for j from 0 to (1- (length objects))
+       do (if (AND (eq 'river ; if the object is river...
+		       (object-name (elt objects j)))
+		   (AND (eq (- y 48)
+			    (elt (object-pos (elt objects j)) 1))
+			(eq x
+			    (elt (object-pos (elt objects j)) 0))))
+	      (setf checkbyte (bit-ior #*1000 checkbyte)))
+	 (if (AND (eq 'river ; if the object is river...
+		      (object-name (elt objects j)))
+		  (AND (eq (+ y 48)
+			   (elt (object-pos (elt objects j)) 1))
+		       (eq x
+			   (elt (object-pos (elt objects j)) 0))))
+	     (setf checkbyte (bit-ior #*0100 checkbyte))) 
+	 (if (AND (eq 'river ; if the object is river...
+		      (object-name (elt objects j)))
+		  (AND (eq (- x 48)
+			   (elt (object-pos (elt objects j)) 0))
+		       (eq y
+			   (elt (object-pos (elt objects j)) 1))))
+	     (setf checkbyte (bit-ior #*0010 checkbyte)))
+	 (if (AND (eq 'river ; if the object is river...
+		      (object-name (elt objects j)))
+		  (AND (eq (+ x 48)
+			   (elt (object-pos (elt objects j)) 0))
+		       (eq y
+			   (elt (object-pos (elt objects j)) 1))))
+	     (setf checkbyte (bit-ior #*0001 checkbyte))))
+    checkbyte))
+       
+
+(defun adjacency2 (x y)
+  (let ((checkbyte #*0000))
+    (loop for i from 0 to (1- (length objects))
+      do (if (AND (eq 'river ; if the object is river...
+		      (object-name (elt objects j)))
+		  (eq (+ (elt (object-pos (elt objects i)) 1) 48)
+		      (elt (object-pos (elt objects j)) 0)))
+	     (setf checkbyte (bit-ior #*0001 checkbyte))))))
+
+
+
+(defun drawMapArrayTile (x y)
+  (let ((checkByte #*0000))
+    (if (AND (> y 0)
+             (string-equal (aref mapArray x (1- y)) 'river))
+        (setf checkByte (bit-ior #*1000 checkByte)))
+    (if (AND (< y 14)
+             (string-equal (aref mapArray x (1+ y)) 'river))
+        (setf checkByte (bit-ior #*0100 checkByte)))
+    (if (AND (> x 0)
+             (string-equal (aref mapArray (1- x) y) 'river))
+        (setf checkByte (bit-ior #*0010 checkByte)))
+    (if (AND (< x 19)
+             (string-equal (aref mapArray (1+ x) y) 'river));
+        (setf checkByte (bit-ior #*0001 checkByte)))
+    checkByte))
+
+(defun 2b->10b (vect)
+  (reduce (let ((e 1)) (lambda (accum bit)
+                        (prog1 (+ accum (* e bit))
+                               (setf e (* e 2)))))
+          (reverse vect) :initial-value 0))
+
+ (generate-cell-grid :cell-container object-menu-filter-buttons
+		     :rows 3
+		     :columns 1
+		     :cell-width 185
+		     :cell-height 48
+		     :spacing 5
+		     :x-offset 10
+		     :y-offset 100)
+ (load-objects-from-file2)
+ (set-filter-button-tags)
+ (sdl:with-events (:poll)
     (:quit-event () t)
+    (:key-down-event (:key key)
+		     (format t "Key down: ~S~%" key)
+		     (case key
+		       (:sdl-key-space (sdl:push-quit-event))))
     (:mouse-motion-event (:x mouse-x :y mouse-y))
     (:idle ()
+	   (defparameter object-menu-cells (make-array 101 :adjustable t :fill-pointer 0))
+	   (generate-cell-grid :cell-container object-menu-cells
+		     :rows 10
+		     :columns 10
+		     :cell-width 48
+		     :cell-height 48
+		     :spacing 5
+		     :x-offset 200
+		     :y-offset 100)
+	   (load-objects-into-cells)
 	   (sdl:clear-display sdl:*black*)
-	   
+	   (if (AND *brush*
+		    (member 'terrain (brush-tags)))
+	       (setf *snap-to-grid* 1)
+	       (setf *snap-to-grid* 0))
+	   (draw-cell-grid object-menu-cells :r 50 :g 50 :b 90)
+	   (draw-cell-grid object-menu-filter-buttons :r 80 :g 50 :b 50)
+	   (draw-filter-button-texts)
+	   (draw-objects-onto-cells)
+	   (draw-selected-brush-indicator)
+	   (draw-cursor)
+	   (if (AND (sdl:mouse-left-p)
+		    (> CTC 0.1))
+	       (progn (setf CTC 0)
+		      (select-filter-tags)
+		      (select-brush))
+	       (incf CTC (sdl:dt)))
 	   (sdl:update-display))))
 
 ;------------------------------------------------------------------------------------
@@ -1568,8 +1858,11 @@
 					 (progn (setf radial 4)
 						(setf radialMenu 1))
 					 (setf (x_v *avatar*) 75)))
+			 (:sdl-key-h (toggle-hitboxes))
+			 (:sdl-key-g (toggle-grid))
+			 (:sdl-key-s (toggle-snap))
 			 (:sdl-key-escape (sdl:push-quit-event))
-			 (:sdl-key-space (modify))
+			 (:sdl-key-space (editor-object-select-menu))
 			 (:sdl-key-y (setf inventory 1))
 			 (:sdl-key-a (radial))
 			 (:sdl-key-tab (progn (write-objects)
@@ -1623,9 +1916,9 @@
       (physics *avatar*) 
       (drawPlayer)
      ; (drawEnemies)
-      (drawEntities)
+      
       ;(drawCells)
-      (drawMapArray)
+      ;(drawMapArray)
       (if (eq radialMenu 1)
 	  (progn (drawRadialMenu radial)
 		 ()))
@@ -1649,9 +1942,23 @@
 				 48 48
 				 :color sdl:*red*))
 	  (incf CTC (sdl:dt)))
-
-      (sdl:draw-surface-at-* *cursor* (- (sdl:mouse-x) 17) 
-			              (- (sdl:mouse-y) 17))
+      (if (eq *display-hitboxes* 1)
+	  (draw-hitboxes))
+      (if (eq *display-grid* 1)
+	  (draw-tile-grid))
+      (draw-brush)
+      (loop for i from 0 to (1- (length objects))
+	   do ;(set-gfx-cell (elt objects i)))
+	   (setf (elt (object-gfx (elt objects i)) 1)
+		 (2b->10b (get-checkbyte (elt objects i)))))
+      ;(if (> (length objects) 0)
+;	  (set-gfx-cell (elt objects 0)))
+		   
+		      ;(2b->10b (get-checkbyte (elt objects i)))))
+      (draw-objects)
+      (draw-cursor)
+      ;(sdl:draw-surface-at-* *cursor* (- (sdl:mouse-x) 17) 
+;			              (- (sdl:mouse-y) 17))
       (cond ((OR (eq ELAPSED 2.5) (> ELAPSED 2.5))
 	     (setf ELAPSED 0)))
       (sdl:draw-string-solid-* (format nil "~D" (x_v *avatar*)) 10 10)
