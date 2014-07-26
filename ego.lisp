@@ -1,6 +1,6 @@
-(defparameter objects (make-array 128 :adjustable t :fill-pointer 0)
+(defparameter objects (make-array 512 :adjustable t :fill-pointer 0)
   "All objects in current screen.")
-
+(defparameter *edit-mode* 'add)
 (defparameter *editor-area* 1)
 (defparameter *editor-screen* 50)
 (defparameter *game-root-dir* "E:/coding/ego/")
@@ -30,13 +30,13 @@
        :initform 'blank
        :initarg :id)
    (x :accessor x
-      :initform 0
+      :initform 480 
       :initarg :x)
    (y :accessor y
-      :initform 0
+      :initform 360
       :initarg :y)
    (pos :accessor pos
-	:initform #(0 0)
+	:initform #(480 360)
 	:initarg :pos)
    (x_v :accessor x_v
       :initform 0.0
@@ -206,8 +206,42 @@
 	(place-object2))))
 
 (defun modify3 ()
-  (mapcar (lambda (x) (if (insideHitbox (eval (elt objects n)))
-			  (setf (object-dead (eval (elt objects n))) 1)))))
+  (if (eq *edit-mode* 'add)
+      (place-object2))
+  (if (eq *edit-mode* 'remove)
+      (remove-object)))
+
+(defun place-object2 ()
+  (if *brush*
+      (progn (vector-push (make-object
+		    :name (elt *brush* 0)
+		    :id nil
+		    :contents '()
+		    :pos (if (eq *snap-to-grid* 1)
+			     `(,(+ (* 48 (truncate (sdl:mouse-x) 48)) 24)
+			       ,(+ (* 48 (truncate (sdl:mouse-y) 48)) 24))
+			     `(,(sdl:mouse-x) ,(sdl:mouse-y)))
+		    :hitbox (elt *brush* 1)
+		    :gfx (copy-tree (elt *brush* 2))
+		    :tags (elt *brush* 3)
+		    :use (elt *brush* 4)
+		    :dead 0) 
+		   objects)
+	     (format t "Placed object."))))
+
+
+(defun remove-object ()
+  (for-all-objects (if (cursor-inside-hitbox object)
+		       (progn (setf (object-dead object) 1)
+			      (format t "Removed object.")))))
+			    
+
+(defmacro for-all-objects (&rest body)
+;  `(defmacro object ()
+ ;    (defparameter object (elt objects i)))
+  `(loop for i from 0 to (1- (length objects))
+      do (let ((object (elt objects i)))
+	   (progn ,@body))))
 
 
 (defun removeDeadObjects (objList)
@@ -278,7 +312,7 @@
 	  (loop for i from 0 to (1- (length objectsList))
 	     do (vector-push (list->struct (elt objectsList i)) objects))
 	  (close file)))
-      (progn (setf objects (make-array 128 :adjustable t :fill-pointer 0))
+      (progn (setf objects (make-array 512 :adjustable t :fill-pointer 0))
 	     ())))
 
 (defun recurse (list)
@@ -318,6 +352,16 @@
 	     (AND (>= (sdl:mouse-y) lower-y)
 		  (<= (sdl:mouse-y) higher-y)))
 	T)))
+
+(defun sword-inside-hitbox (obj)
+  "Check if mouse cursor overlaps hitbox of object."
+  (multiple-value-bind (lower-x higher-x lower-y higher-y) (hitbox2 obj)
+    (if (AND (AND (>= (elt *sword-tip* 0) lower-x)
+		  (<= (elt *sword-tip* 0) higher-x))
+	     (AND (>= (elt *sword-tip* 1) lower-y)
+		  (<= (elt *sword-tip* 1) higher-y)))
+	T)))
+
 
 (defun hitbox (obj)
   " IN: object
@@ -1189,9 +1233,9 @@
   
 (setq terrain0 (make-array '(15 20)))
 
-(defun drawPlayer ()
+(defun draw-player ()
   ;(sdl:draw-surface-at *player* (map 'vector #'* (pos *avatar*) #(48 48))))
-  (sdl:draw-surface-at-* *player* (round (- (x *avatar*) 24))
+  (sdl:draw-surface-at-* *character* (round (- (x *avatar*) 24))
 			          (round (- (y *avatar*) 24))))
 
 (defun board->coord (position)
@@ -1242,8 +1286,8 @@
 
 (defparameter *avatar*
   (make-instance 'objekti :name 'pelaaja 
-		 :x 8 
-		 :y 8
+		 :x 480
+		 :y 360
 		 :pos #(12 8)))
 
 
@@ -1499,16 +1543,16 @@
   (let ((temp-templates-vector (make-array 100 :adjustable t :fill-pointer 0)))
     (loop for i from 0 to (1- (length *templates*))
        do (if (in-tags i)
-	      (vector-push (elt *templates* i)
+	      (vector-push (copy-tree (elt *templates* i))
 			   temp-templates-vector)))
     (loop for i from 0 to (1- (length temp-templates-vector))
       do (setf (cell-value (elt object-menu-cells i))
-	       (elt temp-templates-vector i)))))
+	       (copy-tree (elt temp-templates-vector i))))))
 
 (defun draw-selected-brush-indicator ()
   (if *brush*
       (loop for i from 0 to (- (length object-menu-cells) 2)
-	 do (if (eq *brush* (cell-value (elt object-menu-cells i)))
+	 do (if (equal *brush* (cell-value (elt object-menu-cells i)))
 		(sdl:draw-surface-at-* *objectreticle*
 				       (- (elt (cell-pos (elt object-menu-cells i)) 0) 3)
 				       (- (elt (cell-pos (elt object-menu-cells i)) 1) 3))))))
@@ -1527,15 +1571,19 @@
 				  (elt (cell-pos (elt object-menu-cells i)) 1)))))
 
 (defun draw-cursor ()
-  (sdl:draw-surface-at-* *cursor* (- (sdl:mouse-x) 17) 
-			          (- (sdl:mouse-y) 17)))
+  (sdl:draw-surface-at-* (case *edit-mode*
+			   ('add *cursor*)
+			   ('remove *cursor2*))
+			 (- (sdl:mouse-x) 17) 
+			 (- (sdl:mouse-y) 17)))
 (defun brush-tags ()
   (elt *brush* 3))
 
 (defparameter *snap-to-grid* 0)
 
 (defun draw-brush ()
-  (if *brush*
+  (if (AND *brush*
+	   (eq *edit-mode* 'add))
       (let ((brush-x nil)
 	    (brush-y nil))
 	(if (eq *snap-to-grid* 1)
@@ -1575,22 +1623,7 @@
 		       :color (sdl:color :r 0 :g 155 :b 100))))
 		       
 
-(defun place-object2 ()
-  (if *brush*
-      (vector-push (make-object
-		    :name (elt *brush* 0)
-		    :id nil
-		    :contents '()
-		    :pos (if (eq *snap-to-grid* 1)
-			     `(,(+ (* 48 (truncate (sdl:mouse-x) 48)) 24)
-			       ,(+ (* 48 (truncate (sdl:mouse-y) 48)) 24))
-			     `(,(sdl:mouse-x) ,(sdl:mouse-y)))
-		    :hitbox (elt *brush* 1)
-		    :gfx (elt *brush* 2)
-		    :tags (elt *brush* 3)
-		    :use (elt *brush* 4)
-		    :dead 0) 
-		   objects)))
+
 
 (defparameter *display-hitboxes* 0)
 (defparameter *display-grid* 0)
@@ -1630,10 +1663,17 @@
 			   (elt (cell-pos (elt object-menu-filter-buttons 1)) 1)
 			   :color (if (member 'container *filter-tags*)
 				      color-on
+				      color-off))
+  (sdl:draw-string-solid-* (format nil "enemies") 
+			   (elt (cell-pos (elt object-menu-filter-buttons 2)) 0)
+			   (elt (cell-pos (elt object-menu-filter-buttons 2)) 1)
+			   :color (if (member 'enemy *filter-tags*)
+				      color-on
 				      color-off))))
 (defun set-filter-button-tags ()
   (setf (cell-value (elt object-menu-filter-buttons 0)) 'terrain)
-  (setf (cell-value (elt object-menu-filter-buttons 1)) 'container))
+  (setf (cell-value (elt object-menu-filter-buttons 1)) 'container)
+  (setf (cell-value (elt object-menu-filter-buttons 2)) 'enemy))
 
 (defun editor-object-select-menu ()
   (defparameter object-menu-cells (make-array 101 :adjustable t :fill-pointer 0))
@@ -1813,6 +1853,51 @@
 (defparameter radial 0)
 (defparameter radialMenu 0)
 
+(defparameter *sword-tip* `(,(elt (pos *avatar*) 0)
+			    ,(+ (elt (pos *avatar*) 1) 24)))
+(defparameter *sword-motion* 'retracted)
+
+
+(defun check-sword-collisions ()
+  (for-all-objects (if (sword-inside-hitbox object)
+		       (bump object))))
+
+(defun bump (obj)
+  (decf (elt (object-pos obj) 0) 20))
+
+
+(defun swing-sword (&optional (a 0))
+    (let ((alpha (/ pi 2))
+	  (time 0))
+      (lambda (a)
+	(if (eq a 1)
+	    (setf alpha 0))
+	(symbol-macrolet ((x (elt *sword-tip* 0))
+			  (y (elt *sword-tip* 1)))
+	  
+	  (if (eq *sword-motion* 'swinging)
+	      (progn (setf x (+ (x *avatar*) (* 50 (cos alpha))))
+		     (setf y (+ (y *avatar*) (* 50 (sin alpha))))
+		     (if (> alpha (- 0 (* (/ pi 2) 3)))
+			 (decf alpha (/ pi 16))
+			 (progn (setf *sword-motion* 'retracted)
+				(setf alpha 0))
+			 )))))
+      ))
+
+(defparameter vittu (swing-sword))
+
+(defun visualize-sword-swing ()
+  (sdl:draw-line-* (round (elt (pos *avatar*) 0)) (round (elt (pos *avatar*) 1))
+		   (round (elt *sword-tip* 0)) (round (elt *sword-tip* 1))
+		   :color sdl:*red*))
+
+(defun joop ()
+  (let ((alpha 0))
+    (lambda ()
+      (incf alpha))
+    ))
+
 ;------------------------------------------------------------------------------------
 ; MAIN LOOP
 
@@ -1864,7 +1949,11 @@
 			 (:sdl-key-escape (sdl:push-quit-event))
 			 (:sdl-key-space (editor-object-select-menu))
 			 (:sdl-key-y (setf inventory 1))
-			 (:sdl-key-a (radial))
+			 (:sdl-key-q (radial))
+			 (:sdl-key-r (setf *edit-mode* 'remove))
+			 (:sdl-key-a (setf *edit-mode* 'add))
+			 (:sdl-key-z (progn (setf *sword-motion* 'swinging)
+					     (funcall vittu 1)))
 			 (:sdl-key-tab (progn (write-objects)
 					      (screen-selection)))))
       (:key-up-event (:key key)
@@ -1886,6 +1975,13 @@
 
       (sdl:clear-display (sdl:color :r 20 :g 40 :b 120))
 
+      (if (NOT (keyDown :sdl-key-z))
+	  (progn (setf (elt *sword-tip* 0)
+		       (x *avatar*))
+		 (setf (elt *sword-tip* 1)
+		       (- (y *avatar*) 50))))
+      (if (keyDown :sdl-key-z)
+	  (funcall vittu 0))
 ;      (run)
  ;     (if (< 0 yWorldIndex)
 ;	  (runUp))
@@ -1914,7 +2010,6 @@
 	  ;(pause))
       ;(sdl:draw-surface-at-* *drawer* (* 12 48) (* 10 48))
       (physics *avatar*) 
-      (drawPlayer)
      ; (drawEnemies)
       
       ;(drawCells)
@@ -1936,26 +2031,31 @@
       (if (AND (sdl:mouse-left-p)
 	       (> CTC 0.1))
 	  (progn (setf CTC 0)
-		 (modify2)
+		 (modify3)
 		 (sdl:draw-box-* (* 48 (truncate (sdl:mouse-x) 48))
 				 (* 48 (truncate (sdl:mouse-y) 48))
 				 48 48
 				 :color sdl:*red*))
 	  (incf CTC (sdl:dt)))
+      (draw-objects)
       (if (eq *display-hitboxes* 1)
 	  (draw-hitboxes))
       (if (eq *display-grid* 1)
 	  (draw-tile-grid))
+      (check-sword-collisions)
+      (draw-player)
       (draw-brush)
+      (visualize-sword-swing)
       (loop for i from 0 to (1- (length objects))
-	   do ;(set-gfx-cell (elt objects i)))
-	   (setf (elt (object-gfx (elt objects i)) 1)
-		 (2b->10b (get-checkbyte (elt objects i)))))
+	   do (if (eq 'river
+		      (object-name (elt objects i)))
+		  (set-gfx-cell (elt objects i))))
+	  ; (setf (elt (object-gfx (elt objects i)) 1)
+	;	 (2b->10b (get-checkbyte (elt objects i)))))
       ;(if (> (length objects) 0)
 ;	  (set-gfx-cell (elt objects 0)))
 		   
 		      ;(2b->10b (get-checkbyte (elt objects i)))))
-      (draw-objects)
       (draw-cursor)
       ;(sdl:draw-surface-at-* *cursor* (- (sdl:mouse-x) 17) 
 ;			              (- (sdl:mouse-y) 17))

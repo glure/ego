@@ -7,5 +7,4 @@
  (river  (24 24 24 24) (*river* 0)  (terrain water) ())
  (rock01 (24 24 24 24) (*rock01* 0)  (terrain water) ())
  (grass01 (24 24 24 24) (*grass01* 0) (terrain) ())
- (flower01 (24 24 24 24) (*flower01* 0) (terrain) ())
- (rat (12 12 12 12) (*rat* 0) (enemy) ()))
+ (flower01 (24 24 24 24) (*flower01* 0) (terrain) ()))

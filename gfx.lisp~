@@ -1,5 +1,5 @@
 (gfx-object *river* "rivers.png" 255)
-(gfx-object *rat* "rat.png" 255)
+;(gfx-object *rat* "rat.png" 255)
 ;(gfx-object *slime* "enemy_002.bmp" 255)
 (gfx-object *player* "agent-idle.png" 255)
 (gfx-object *character* "char.png" 255)
